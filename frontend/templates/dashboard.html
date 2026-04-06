@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block head %}
+<style>
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  .stat-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.2rem 1.5rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    text-align: center;
+  }
+  .stat-card .number { font-size: 2.2rem; font-weight: 800; line-height: 1; margin-bottom: .3rem; }
+  .stat-card .label  { font-size: .8rem; color: #666; text-transform: uppercase; letter-spacing: .5px; }
+  .stat-pending  .number { color: #e65100; }
+  .stat-approved .number { color: #2e7d32; }
+  .stat-rejected .number { color: #c62828; }
+  .stat-skipped  .number { color: #1565c0; }
+
+  .filters {
+    display: flex;
+    gap: .8rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .filters select, .filters input {
+    padding: .5rem .8rem;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: .9rem;
+    background: white;
+  }
+
+  .table-wrap { overflow-x: auto; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .9rem;
+  }
+  thead th {
+    background: #f8f9fa;
+    padding: .75rem 1rem;
+    text-align: left;
+    font-size: .75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: #666;
+    border-bottom: 2px solid #e0e0e0;
+    white-space: nowrap;
+  }
+  tbody tr {
+    border-bottom: 1px solid #f0f0f0;
+    transition: background .1s;
+    cursor: pointer;
+  }
+  tbody tr:hover { background: #f8f9fa; }
+  tbody td { padding: .7rem 1rem; vertical-align: middle; }
+  tbody td.apprentice-name { font-weight: 600; }
+  tbody td.filename { color: #555; font-size: .85rem; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  tbody td.modified { color: #888; font-size: .8rem; white-space: nowrap; }
+
+  .ext-badge {
+    display: inline-block;
+    padding: .1rem .4rem;
+    border-radius: 4px;
+    font-size: .7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .ext-xlsx, .ext-xls { background: #e8f5e9; color: #2e7d32; }
+  .ext-pdf             { background: #fce4ec; color: #c62828; }
+
+  .empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: #888;
+  }
+  .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; }
+  .empty-state h3 { font-size: 1.2rem; margin-bottom: .5rem; color: #444; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Stats -->
+<div class="stats-grid">
+  <div class="stat-card stat-pending">
+    <div class="number">{{ stats.pending or 0 }}</div>
+    <div class="label">Pendientes</div>
+  </div>
+  <div class="stat-card stat-approved">
+    <div class="number">{{ stats.approved or 0 }}</div>
+    <div class="label">Aprobadas</div>
+  </div>
+  <div class="stat-card stat-rejected">
+    <div class="number">{{ stats.rejected or 0 }}</div>
+    <div class="label">Rechazadas</div>
+  </div>
+  <div class="stat-card stat-skipped">
+    <div class="number">{{ stats.skipped or 0 }}</div>
+    <div class="label">Ya revisadas</div>
+  </div>
+  <div class="stat-card">
+    <div class="number" style="color:#1a1a2e">{{ total }}</div>
+    <div class="label">Total</div>
+  </div>
+</div>
+
+<!-- Modo test -->
+{% if test_mode %}
+<div style="background:#e8f4fd;border:1px solid #90caf9;border-radius:8px;padding:.7rem 1rem;margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;gap:1rem">
+  <span style="color:#1565c0;font-weight:600">🧪 Modo test activo</span>
+  {% if filter_test %}
+    <a href="/" style="font-size:.85rem;color:#1565c0">← Ver todas</a>
+  {% else %}
+    <a href="/?test=1" style="background:#1565c0;color:#fff;padding:.35rem .9rem;border-radius:6px;font-size:.85rem;font-weight:600;text-decoration:none">Ver registros de test</a>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- Flash message -->
+{% if message %}
+<div class="alert alert-{{ message_type or 'info' }}">{{ message }}</div>
+{% endif %}
+
+<!-- Filters -->
+<div class="card">
+  <div class="filters">
+    <form method="get" style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:center;width:100%">
+      <select name="status" onchange="this.form.submit()">
+        <option value="pending"  {% if filter_status=='pending'  %}selected{% endif %}>🔴 Pendientes</option>
+        <option value="approved" {% if filter_status=='approved' %}selected{% endif %}>✅ Aprobadas</option>
+        <option value="rejected" {% if filter_status=='rejected' %}selected{% endif %}>❌ Rechazadas</option>
+        <option value="skipped"  {% if filter_status=='skipped'  %}selected{% endif %}>⏭ Ya revisadas</option>
+        <option value=""         {% if filter_status==''         %}selected{% endif %}>Todas</option>
+      </select>
+      <select name="ficha" onchange="this.form.submit()">
+        <option value="">Todas las fichas</option>
+        {% for f in fichas %}
+        <option value="{{ f }}" {% if filter_ficha==f %}selected{% endif %}>Ficha {{ f }}</option>
+        {% endfor %}
+      </select>
+      <input type="text" name="q" placeholder="Buscar aprendiz..." value="{{ filter_q }}" style="flex:1;min-width:180px">
+      <button type="submit" class="btn btn-secondary">Filtrar</button>
+    </form>
+  </div>
+
+  {% if rows %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Aprendiz</th>
+          <th>Ficha</th>
+          <th>Bitácora</th>
+          <th>Archivo</th>
+          <th>Modificado</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr onclick="window.location='/bitacora/{{ r.id }}'">
+          <td style="color:#aaa;font-size:.8rem">{{ r.id }}</td>
+          <td class="apprentice-name">{{ r.apprentice_name }}</td>
+          <td><span style="font-size:.8rem;color:#666">{{ r.ficha }}</span></td>
+          <td style="text-align:center;font-weight:700">{{ r.bitacora_num or '?' }}</td>
+          <td class="filename">
+            <span class="ext-badge ext-{{ r.file_ext }}">{{ r.file_ext }}</span>
+            {{ r.filename }}
+          </td>
+          <td class="modified">{{ r.modified[:10] if r.modified else '' }}</td>
+          <td><span class="badge badge-{{ r.status }}">
+            {% if r.status == 'pending'  %}Pendiente
+            {% elif r.status == 'approved' %}Aprobada
+            {% elif r.status == 'rejected' %}Rechazada
+            {% else %}Ya revisada{% endif %}
+          </span></td>
+          <td><a href="/bitacora/{{ r.id }}" class="btn btn-secondary" style="font-size:.8rem;padding:.4rem .8rem">Revisar →</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="icon">✅</div>
+    <h3>No hay bitácoras en este estado</h3>
+    <p>Cambia el filtro o haz clic en "Sincronizar" para buscar nuevas.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

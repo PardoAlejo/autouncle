@@ -1,0 +1,681 @@
+{% extends "base.html" %}
+{% block title %}Revisar — {{ b.apprentice_name }}{% endblock %}
+
+{% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  .review-layout {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 1.5rem;
+    align-items: start;
+  }
+
+  /* FILE PREVIEW */
+  .preview-card { position: sticky; top: 72px; }
+  .preview-card iframe {
+    width: 100%;
+    height: 75vh;
+    border: none;
+    border-radius: 8px;
+    background: #f5f5f5;
+  }
+
+  /* META INFO */
+  .meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: .6rem 1rem;
+    margin-bottom: 1.2rem;
+  }
+  .meta-item .label { font-size: .72rem; text-transform: uppercase; letter-spacing: .4px; color: #888; margin-bottom: .15rem; }
+  .meta-item .value { font-size: .9rem; font-weight: 600; }
+
+  /* CHECKLIST */
+  .checklist { list-style: none; margin-bottom: 1.5rem; }
+  .checklist li {
+    display: flex;
+    align-items: flex-start;
+    gap: .75rem;
+    padding: .7rem 0;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .checklist li:last-child { border-bottom: none; }
+  .checklist input[type=checkbox] {
+    width: 18px; height: 18px;
+    accent-color: #2e7d32;
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .checklist label { cursor: pointer; line-height: 1.4; font-size: .9rem; }
+  .checklist label .sub { display: block; font-size: .78rem; color: #888; margin-top: .1rem; }
+
+  /* NOTES */
+  textarea {
+    width: 100%;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: .7rem;
+    font-size: .9rem;
+    resize: vertical;
+    min-height: 80px;
+    font-family: inherit;
+  }
+  textarea:focus { outline: none; border-color: #1a73e8; }
+
+  /* ACTION BUTTONS */
+  .action-row { display: flex; gap: .8rem; margin-top: 1rem; }
+  .action-row .btn { flex: 1; justify-content: center; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
+
+  .divider { border: none; border-top: 1px solid #eee; margin: 1.2rem 0; }
+  .section-title {
+    font-size: .75rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .5px; color: #888; margin-bottom: .8rem;
+  }
+
+  .seg-row { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .seg-item { background: #e3f2fd; color: #1565c0; border-radius: 6px; padding: .3rem .7rem; font-size: .78rem; }
+
+  /* ── SIGNING OVERLAY ───────────────────────────────────────── */
+  #signing-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: #1a1a1a;
+    flex-direction: column;
+  }
+  #signing-overlay.active { display: flex; }
+
+  #overlay-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .7rem 1.2rem;
+    background: #111;
+    color: #fff;
+    gap: 1rem;
+    flex-shrink: 0;
+  }
+  #overlay-toolbar .hint {
+    font-size: .85rem;
+    color: #aaa;
+    text-align: center;
+    flex: 1;
+  }
+  #overlay-toolbar .hint.placed { color: #81c784; }
+
+  #overlay-body {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem;
+    gap: .8rem;
+  }
+
+  #pdf-wrapper {
+    position: relative;
+    display: inline-block;
+    box-shadow: 0 4px 24px rgba(0,0,0,.5);
+  }
+  #pdf-canvas { display: block; cursor: crosshair; }
+
+  #sig-pin {
+    position: absolute;
+    display: none;
+    border: 2px dashed #1a73e8;
+    background: rgba(26,115,232,0.15);
+    border-radius: 4px;
+    pointer-events: none;
+    box-sizing: border-box;
+  }
+  #sig-pin img { width: 100%; height: 100%; object-fit: contain; opacity: .8; }
+  #sig-pin .pin-label {
+    position: absolute;
+    top: -22px; left: 0;
+    font-size: 11px;
+    background: #1a73e8;
+    color: #fff;
+    padding: 2px 7px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+
+  .pdf-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    color: #ccc;
+    font-size: .9rem;
+  }
+  .pdf-controls button {
+    background: #333;
+    border: 1px solid #555;
+    color: #fff;
+    border-radius: 4px;
+    padding: .3rem .9rem;
+    cursor: pointer;
+    font-size: .9rem;
+  }
+  .pdf-controls button:disabled { opacity: .3; cursor: default; }
+
+  #overlay-loading {
+    color: #aaa;
+    font-size: 1rem;
+    text-align: center;
+    padding: 3rem;
+  }
+
+  @media (max-width: 900px) {
+    .review-layout { grid-template-columns: 1fr; }
+    .preview-card { position: static; }
+    .preview-card iframe { height: 50vh; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Back -->
+<a href="/" class="btn btn-secondary" style="margin-bottom:1rem">← Volver</a>
+
+{% if message %}
+<div class="alert alert-{{ message_type or 'info' }}" style="margin-bottom:1rem">{{ message }}</div>
+{% endif %}
+
+{% if b.status == 'approved' and b.signed_pdf_path %}
+<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:.8rem 1.2rem;margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;gap:1rem">
+  <div>
+    <span style="color:#2e7d32;font-weight:700">✓ Firmada y subida</span>
+    <span style="color:#555;font-size:.82rem;margin-left:.6rem">{{ b.reviewed_at[:16] if b.reviewed_at else '' }}</span>
+  </div>
+  <a href="/bitacora/{{ b.id }}/download-signed" target="_blank"
+     style="background:#2e7d32;color:#fff;padding:.4rem 1rem;border-radius:6px;font-size:.85rem;font-weight:600;text-decoration:none;white-space:nowrap">
+    Ver firmado ↗
+  </a>
+</div>
+{% endif %}
+
+<div class="review-layout">
+
+  <!-- LEFT: File preview (solo para revisar el contenido) -->
+  <div class="card preview-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem">
+      <div>
+        <div style="font-weight:700;font-size:1rem">{{ b.filename }}</div>
+        <div style="font-size:.8rem;color:#888">{{ b.apprentice_name }} · Bitácora #{{ b.bitacora_num or '?' }}</div>
+      </div>
+      <span style="display:inline-block;padding:.2rem .6rem;border-radius:4px;font-size:.75rem;font-weight:700;text-transform:uppercase;background:{% if b.file_ext=='pdf' %}#fce4ec;color:#c62828{% else %}#e8f5e9;color:#2e7d32{% endif %}">{{ b.file_ext }}</span>
+    </div>
+
+    {% if b.status in ('approved', 'rejected', 'skipped') and b.signed_pdf_path %}
+      <iframe src="/bitacora/{{ b.id }}/download-signed"></iframe>
+    {% elif b.file_ext == 'pdf' %}
+      <iframe src="/bitacora/{{ b.id }}/download"></iframe>
+    {% elif b.file_ext in ('xlsx', 'xls') %}
+      <div style="background:#f5f5f5;border-radius:8px;height:75vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.2rem;text-align:center;padding:2rem">
+        <div style="font-size:3.5rem">📊</div>
+        <div style="font-weight:600;color:#333">Bitácora Excel</div>
+        <div style="font-size:.88rem;color:#666;max-width:280px">Ábrela en OneDrive para revisar el contenido.</div>
+        <a href="{{ preview_url }}" target="_blank" class="btn btn-primary">Abrir en OneDrive ↗</a>
+      </div>
+    {% else %}
+      <div style="background:#f5f5f5;border-radius:8px;height:75vh;display:flex;align-items:center;justify-content:center;color:#aaa">
+        Vista previa no disponible
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- RIGHT: Review panel -->
+  <div>
+    {% if rejected_prev %}
+    <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:.8rem 1rem;margin-bottom:1rem">
+      <div style="font-weight:700;color:#f57f17;margin-bottom:.4rem">
+        ⚠ Este aprendiz tiene {{ rejected_prev|length }} bitácora(s) rechazada(s) anteriormente
+      </div>
+      {% for r in rejected_prev %}
+      <div style="font-size:.83rem;color:#555;padding:.3rem 0;border-top:1px solid #ffe082">
+        <span style="font-weight:600">Bitácora #{{ r.bitacora_num or '?' }}</span> — {{ r.filename }}
+        {% if r.reviewed_at %}<span style="color:#999"> · {{ r.reviewed_at[:10] }}</span>{% endif %}
+        {% if r.notes %}<div style="color:#777;margin-top:.15rem;font-style:italic">"{{ r.notes }}"</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Metadata -->
+    <div class="card" style="margin-bottom:1rem">
+      <div class="section-title">Información del aprendiz</div>
+      <div class="meta-grid">
+        <div class="meta-item"><div class="label">Aprendiz</div><div class="value">{{ b.apprentice_name }}</div></div>
+        <div class="meta-item"><div class="label">CC / TI</div><div class="value">{{ b.cc or '—' }}</div></div>
+        <div class="meta-item"><div class="label">Ficha</div><div class="value">{{ b.ficha or '—' }}</div></div>
+        <div class="meta-item"><div class="label">Bitácora #</div><div class="value">{{ b.bitacora_num or '?' }}</div></div>
+        <div class="meta-item" style="grid-column:1/-1"><div class="label">Empresa</div><div class="value">{{ b.company or '—' }}</div></div>
+        <div class="meta-item"><div class="label">Inicio EP</div><div class="value">{{ b.start_date[:10] if b.start_date and b.start_date != 'nan' else '—' }}</div></div>
+        <div class="meta-item"><div class="label">Fin EP</div><div class="value">{{ b.end_date[:10] if b.end_date and b.end_date != 'nan' else '—' }}</div></div>
+        <div class="meta-item"><div class="label">Área</div><div class="value">{{ b.area or '—' }}</div></div>
+        <div class="meta-item"><div class="label">Programa</div><div class="value" style="font-size:.8rem">{{ b.program or '—' }}</div></div>
+      </div>
+      {% if b.seg1_date or b.seg2_date or b.seg3_date %}
+      <div class="section-title" style="margin-top:.5rem">Seguimientos programados</div>
+      <div class="seg-row">
+        {% if b.seg1_date and b.seg1_date != 'nan' %}<span class="seg-item">1° {{ b.seg1_date[:10] }}</span>{% endif %}
+        {% if b.seg2_date and b.seg2_date != 'nan' %}<span class="seg-item">2° {{ b.seg2_date[:10] }}</span>{% endif %}
+        {% if b.seg3_date and b.seg3_date != 'nan' %}<span class="seg-item">3° {{ b.seg3_date[:10] }}</span>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Checklist + actions -->
+    <div class="card">
+      {% if b.status in ('approved', 'rejected', 'skipped') %}
+
+        <div style="text-align:center;padding:1.5rem 1rem">
+          {% if b.status == 'approved' %}
+            <div style="font-size:2.5rem;margin-bottom:.5rem">✅</div>
+            <div style="font-weight:700;font-size:1.05rem;color:#2e7d32">Bitácora aprobada</div>
+          {% elif b.status == 'rejected' %}
+            <div style="font-size:2.5rem;margin-bottom:.5rem">❌</div>
+            <div style="font-weight:700;font-size:1.05rem;color:#c62828">Bitácora rechazada</div>
+          {% elif b.status == 'skipped' %}
+            <div style="font-size:2.5rem;margin-bottom:.5rem">⏭</div>
+            <div style="font-weight:700;font-size:1.05rem;color:#555">Marcada como ya revisada</div>
+          {% endif %}
+          {% if b.reviewed_at %}
+            <div style="font-size:.82rem;color:#888;margin-top:.3rem">{{ b.reviewed_at[:16] }}</div>
+          {% endif %}
+          {% if b.notes %}
+            <div style="margin-top:1rem;background:#f5f5f5;border-radius:8px;padding:.7rem 1rem;font-size:.88rem;color:#444;text-align:left">{{ b.notes }}</div>
+          {% endif %}
+        </div>
+
+        <hr class="divider">
+        <div style="font-size:.8rem;color:#aaa;text-align:center;margin-bottom:.8rem">¿Necesitas corregir el estado?</div>
+        <div class="action-row">
+          {% if b.status != 'approved' %}
+          <button type="button" class="btn btn-success" style="width:100%;justify-content:center"
+            onclick="startCorrectionApprove('{{ (b.notes or '')|replace("'", "\\'") }}')">✍️ Aprobar</button>
+          {% endif %}
+          {% if b.status != 'rejected' %}
+          <form method="post" action="/bitacora/{{ b.id }}/reject" style="flex:1">
+            <input type="hidden" name="notes" value="{{ b.notes or '' }}">
+            <button type="submit" class="btn btn-danger" style="width:100%;justify-content:center">✗ Rechazar</button>
+          </form>
+          {% endif %}
+        </div>
+
+      {% else %}
+
+        <div class="section-title">Lista de verificación</div>
+        <ul class="checklist">
+          <li>
+            <input type="checkbox" id="c1">
+            <label for="c1">Firmas presentes<span class="sub">Firma del aprendiz y del jefe inmediato visibles</span></label>
+          </li>
+          <li>
+            <input type="checkbox" id="c2">
+            <label for="c2">Fechas del encabezado correctas<span class="sub">Período y consecutivo corresponden</span></label>
+          </li>
+          <li>
+            <input type="checkbox" id="c3">
+            <label for="c3">Actividades cubren el período completo<span class="sub">No hay días sin actividad registrada</span></label>
+          </li>
+          <li>
+            <input type="checkbox" id="c4">
+            <label for="c4">Evidencias verificadas<span class="sub">Links de evidencia abren y corresponden a la actividad</span></label>
+          </li>
+        </ul>
+
+        <hr class="divider">
+
+        <div class="section-title">Observaciones (opcional)</div>
+        <textarea id="notes-field" placeholder="Agregar notas o comentarios...">{{ b.notes or '' }}</textarea>
+
+        <div class="action-row">
+          <button type="button" class="btn btn-success" id="approve-btn" onclick="startApprovalFlow()">
+            ✍️ Firmar y subir
+          </button>
+          <button type="button" class="btn btn-danger" id="reject-trigger">✗ Rechazar</button>
+        </div>
+
+        <!-- Panel de rechazo -->
+        <div id="reject-panel" style="display:none;margin-top:1rem;background:#fff3f3;border:1px solid #ffcdd2;border-radius:8px;padding:1rem">
+          <div style="font-weight:600;color:#c62828;margin-bottom:.6rem">Motivo del rechazo</div>
+          <form method="post" action="/bitacora/{{ b.id }}/reject" id="reject-form">
+            <textarea name="notes" id="reject-notes" placeholder="Describe qué debe corregir el aprendiz..." style="margin-bottom:.8rem"></textarea>
+            <div style="display:flex;gap:.6rem">
+              <button type="submit" class="btn btn-danger" style="flex:1;justify-content:center">Confirmar rechazo</button>
+              <button type="button" class="btn btn-secondary" id="reject-cancel">Cancelar</button>
+            </div>
+          </form>
+        </div>
+
+        <div style="margin-top:.8rem">
+          <form method="post" action="/bitacora/{{ b.id }}/skip">
+            <button type="submit" class="btn btn-secondary" style="width:100%;justify-content:center;font-size:.82rem">
+              ⏭ Marcar como "ya revisada antes" (saltar)
+            </button>
+          </form>
+        </div>
+
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- ── SIGNING OVERLAY ──────────────────────────────────────────────── -->
+<div id="signing-overlay">
+  <div id="overlay-toolbar">
+    <button class="btn btn-secondary" onclick="closeSigningOverlay()" style="flex-shrink:0">✕ Cancelar</button>
+    <span class="hint" id="overlay-hint">Navega hasta la página de firma y haz click donde quieres colocarla</span>
+    <button class="btn btn-success" id="confirm-btn" onclick="confirmSignature()" disabled style="flex-shrink:0">
+      ✓ Confirmar firma
+    </button>
+  </div>
+  <div id="overlay-body">
+    <div id="overlay-loading">Cargando PDF...</div>
+    <div id="pdf-viewer" style="display:none;flex-direction:column;align-items:center;gap:.8rem;width:100%">
+      <div class="pdf-controls">
+        <button id="btn-prev" onclick="changePage(-1)">◀ Anterior</button>
+        <span id="page-info" style="min-width:120px;text-align:center"></span>
+        <button id="btn-next" onclick="changePage(1)">Siguiente ▶</button>
+      </div>
+      <div id="pdf-wrapper">
+        <canvas id="pdf-canvas"></canvas>
+        <div id="sig-pin">
+          <span class="pin-label">Tu firma</span>
+          <img src="/signature-preview" alt="firma">
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Formulario oculto que se envía al confirmar -->
+<form method="post" action="/bitacora/{{ b.id }}/approve" id="approve-form" style="display:none">
+  <input type="hidden" name="notes"       id="form-notes">
+  <input type="hidden" name="dest_folder" id="form-dest-folder">
+  <input type="hidden" name="sig_x"       id="sig_x">
+  <input type="hidden" name="sig_y"       id="sig_y">
+  <input type="hidden" name="sig_page"    id="sig_page" value="-1">
+</form>
+
+<!-- ── DEST CONFIRMATION OVERLAY ──────────────────────────────────── -->
+<div id="dest-overlay" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.65);align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;padding:2rem;max-width:580px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,.35)">
+    <div style="font-weight:700;font-size:1.05rem;margin-bottom:1.2rem">📁 ¿Dónde se guardará la bitácora firmada?</div>
+
+    <div id="dest-loading" style="color:#888;text-align:center;padding:2rem 0">
+      <div style="font-size:1.5rem;margin-bottom:.5rem">⏳</div>
+      Buscando carpeta destino en SharePoint...
+    </div>
+
+    <div id="dest-content" style="display:none">
+      <div id="dest-warning" style="display:none;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:.6rem .9rem;margin-bottom:1rem;font-size:.85rem;color:#e65100">
+        ⚠ No se encontró la carpeta exacta del aprendiz — se usará una carpeta general. Verifica la ruta antes de continuar.
+      </div>
+
+      <!-- Ruta mostrada como breadcrumb legible -->
+      <div style="background:#f5f5f5;border-radius:8px;padding:.9rem 1rem;margin-bottom:1rem;line-height:1.8">
+        <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.4px;color:#888;margin-bottom:.4rem">Carpeta destino</div>
+        <div id="dest-breadcrumb" style="font-size:.9rem;color:#333;word-break:break-word"></div>
+      </div>
+
+      <!-- Edición manual (oculta por defecto) -->
+      <div id="dest-edit-area" style="display:none;margin-bottom:1rem">
+        <label style="font-size:.78rem;color:#888;display:block;margin-bottom:.3rem">Ruta completa (server-relative) — edita con cuidado:</label>
+        <input type="text" id="dest-input"
+          style="width:100%;border:1px solid #1a73e8;border-radius:6px;padding:.5rem .7rem;font-size:.8rem;font-family:monospace;box-sizing:border-box">
+      </div>
+      <button type="button" id="dest-edit-btn"
+        style="font-size:.82rem;color:#1a73e8;background:none;border:none;cursor:pointer;padding:0;margin-bottom:1.2rem;display:block">
+        ✏️ Cambiar ruta manualmente
+      </button>
+
+      <div style="display:flex;gap:.8rem">
+        <button type="button" id="dest-confirm-btn" class="btn btn-success" style="flex:1;justify-content:center">
+          Continuar → Firmar
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="closeDestOverlay()">Cancelar</button>
+      </div>
+    </div>
+
+    <div id="dest-error" style="display:none;color:#c62828;text-align:center;padding:1rem"></div>
+  </div>
+</div>
+
+<script>
+  // ── Checklist → habilitar botón Firmar ───────────────────────
+  const approveBtn = document.getElementById('approve-btn');
+  function updateApproveBtn() {
+    if (!approveBtn) return;
+    const all = Array.from(document.querySelectorAll('.checklist input[type=checkbox]')).every(c => c.checked);
+    approveBtn.disabled = !all;
+  }
+  document.querySelectorAll('.checklist input[type=checkbox]').forEach(c => c.addEventListener('change', updateApproveBtn));
+  updateApproveBtn();
+
+  // ── Panel de rechazo ─────────────────────────────────────────
+  const rejectTrigger = document.getElementById('reject-trigger');
+  const rejectPanel   = document.getElementById('reject-panel');
+  const rejectCancel  = document.getElementById('reject-cancel');
+  if (rejectTrigger) {
+    rejectTrigger.addEventListener('click', () => {
+      rejectPanel.style.display = 'block';
+      rejectTrigger.style.display = 'none';
+      document.getElementById('reject-notes').focus();
+    });
+    rejectCancel.addEventListener('click', () => {
+      rejectPanel.style.display = 'none';
+      rejectTrigger.style.display = '';
+    });
+  }
+
+  // ── Correction approve (already-reviewed bitácoras) ──────────
+  window.startCorrectionApprove = function(existingNotes) {
+    let nf = document.getElementById('notes-field');
+    if (!nf) {
+      nf = document.createElement('input');
+      nf.type = 'hidden';
+      nf.id = 'notes-field';
+      document.body.appendChild(nf);
+    }
+    nf.value = existingNotes;
+    startApprovalFlow();
+  };
+
+  // ── PDF.js ────────────────────────────────────────────────────
+  const overlay = document.getElementById('signing-overlay');
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const canvas    = document.getElementById('pdf-canvas');
+    const pin       = document.getElementById('sig-pin');
+    const pageInfo  = document.getElementById('page-info');
+    const btnPrev   = document.getElementById('btn-prev');
+    const btnNext   = document.getElementById('btn-next');
+    const confirmBtn = document.getElementById('confirm-btn');
+    const hint       = document.getElementById('overlay-hint');
+    const loading    = document.getElementById('overlay-loading');
+    const viewer     = document.getElementById('pdf-viewer');
+
+    const SIG_W_RATIO = 0.25;
+    const SIG_H_PT    = 45;
+
+    let pdfDoc = null, currentPage = 1, currentScale = 1, renderTask = null;
+    let sigPlaced = false;
+
+    async function loadPDF(url) {
+      loading.style.display = 'block';
+      viewer.style.display  = 'none';
+      pdfDoc = await pdfjsLib.getDocument(url).promise;
+      currentPage = 1;   // ← empieza en página 1
+      loading.style.display = 'none';
+      viewer.style.display  = 'flex';
+      await renderPage(currentPage);
+    }
+
+    async function renderPage(num) {
+      if (renderTask) { try { renderTask.cancel(); } catch(_) {} }
+      const page = await pdfDoc.getPage(num);
+
+      // Ajustar al ancho disponible del overlay
+      const maxW = Math.min(overlay.clientWidth - 32, 900);
+      const vp1  = page.getViewport({ scale: 1 });
+      currentScale = maxW / vp1.width;
+      const vp   = page.getViewport({ scale: currentScale });
+
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width  = vp.width  * dpr;
+      canvas.height = vp.height * dpr;
+      canvas.style.width  = vp.width  + 'px';
+      canvas.style.height = vp.height + 'px';
+
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      renderTask = page.render({ canvasContext: ctx, viewport: vp });
+      await renderTask.promise;
+
+      pageInfo.textContent = `Página ${num} de ${pdfDoc.numPages}`;
+      btnPrev.disabled = num <= 1;
+      btnNext.disabled = num >= pdfDoc.numPages;
+
+      // Redibujar pin si la firma ya fue colocada en esta página
+      const storedPage = parseInt(document.getElementById('sig_page').value);
+      if (sigPlaced && storedPage === num - 1) repositionPin();
+      else pin.style.display = 'none';
+    }
+
+    function repositionPin() {
+      const ptX    = parseFloat(document.getElementById('sig_x').value);
+      const ptY    = parseFloat(document.getElementById('sig_y').value);
+      if (isNaN(ptX) || isNaN(ptY)) return;
+      const sigWpx = canvas.clientWidth * SIG_W_RATIO;
+      const sigHpx = SIG_H_PT * currentScale;
+      const cssCx  = ptX * currentScale;
+      const cssCy  = canvas.clientHeight - ptY * currentScale;
+      pin.style.left   = (cssCx - sigWpx / 2) + 'px';
+      pin.style.top    = (cssCy - sigHpx / 2) + 'px';
+      pin.style.width  = sigWpx + 'px';
+      pin.style.height = sigHpx + 'px';
+      pin.style.display = 'block';
+    }
+
+    canvas.addEventListener('click', e => {
+      const rect = canvas.getBoundingClientRect();
+      const ptX  = (e.clientX - rect.left)  / currentScale;
+      const ptY  = (rect.height - (e.clientY - rect.top)) / currentScale;
+
+      document.getElementById('sig_x').value    = ptX.toFixed(2);
+      document.getElementById('sig_y').value    = ptY.toFixed(2);
+      document.getElementById('sig_page').value = currentPage - 1;
+
+      sigPlaced = true;
+      repositionPin();
+      confirmBtn.disabled = false;
+      hint.textContent = 'Click de nuevo para mover la firma';
+      hint.className   = 'hint placed';
+    });
+
+    window.changePage = async function(delta) {
+      const next = currentPage + delta;
+      if (next < 1 || next > pdfDoc.numPages) return;
+      currentPage = next;
+      await renderPage(currentPage);
+    };
+
+    let pdfBlobUrl = null;
+
+    // ── Destination confirmation flow ─────────────────────────
+    let resolvedDestFolder = '';
+
+    window.startApprovalFlow = async function() {
+      const destOverlay = document.getElementById('dest-overlay');
+      destOverlay.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+
+      document.getElementById('dest-loading').style.display = 'block';
+      document.getElementById('dest-content').style.display = 'none';
+      document.getElementById('dest-error').style.display   = 'none';
+
+      try {
+        const resp = await fetch('/bitacora/{{ b.id }}/resolve-dest');
+        const data = await resp.json();
+        resolvedDestFolder = data.path;
+
+        // Render breadcrumb: split display path by "/" and show with arrows
+        const parts = (data.display || data.path).split('/').filter(Boolean);
+        const bc = document.getElementById('dest-breadcrumb');
+        bc.innerHTML = parts.map((p, i) =>
+          `<span style="color:${i === parts.length-1 ? '#1a73e8' : '#555'};font-weight:${i === parts.length-1 ? '700' : '400'}">${p}</span>`
+        ).join('<span style="color:#bbb;margin:0 .3rem">/</span>');
+
+        document.getElementById('dest-input').value = data.path;
+        document.getElementById('dest-warning').style.display = data.found ? 'none' : 'block';
+        document.getElementById('dest-loading').style.display = 'none';
+        document.getElementById('dest-content').style.display = 'block';
+      } catch(e) {
+        document.getElementById('dest-loading').style.display = 'none';
+        const err = document.getElementById('dest-error');
+        err.textContent = '✗ Error buscando carpeta destino. Intenta de nuevo.';
+        err.style.display = 'block';
+      }
+    };
+
+    window.closeDestOverlay = function() {
+      document.getElementById('dest-overlay').style.display = 'none';
+      document.body.style.overflow = '';
+    };
+
+    document.getElementById('dest-edit-btn').addEventListener('click', function() {
+      document.getElementById('dest-edit-area').style.display = 'block';
+      this.style.display = 'none';
+      document.getElementById('dest-input').focus();
+    });
+
+    document.getElementById('dest-confirm-btn').addEventListener('click', function() {
+      const editArea = document.getElementById('dest-edit-area');
+      if (editArea.style.display !== 'none') {
+        resolvedDestFolder = document.getElementById('dest-input').value.trim();
+      }
+      document.getElementById('form-dest-folder').value = resolvedDestFolder;
+      closeDestOverlay();
+      openSigningOverlay();
+    });
+
+    window.openSigningOverlay = async function() {
+      overlay.classList.add('active');
+      document.body.style.overflow = 'hidden';
+
+      if (!pdfDoc) {
+        {% if b.file_ext in ('xlsx', 'xls') %}
+          // Excel: convertir primero
+          loading.textContent = 'Convirtiendo Excel a PDF...';
+          const resp = await fetch('/bitacora/{{ b.id }}/preview-pdf');
+          if (!resp.ok) {
+            loading.textContent = '✗ Error convirtiendo Excel: ' + await resp.text();
+            return;
+          }
+          pdfBlobUrl = URL.createObjectURL(await resp.blob());
+          await loadPDF(pdfBlobUrl);
+        {% else %}
+          await loadPDF('/bitacora/{{ b.id }}/preview-pdf');
+        {% endif %}
+      }
+    };
+
+    window.closeSigningOverlay = function() {
+      overlay.classList.remove('active');
+      document.body.style.overflow = '';
+    };
+
+    window.confirmSignature = function() {
+      document.getElementById('form-notes').value = (document.getElementById('notes-field') || {value:''}).value;
+      document.getElementById('approve-form').submit();
+    };
+</script>
+{% endblock %}

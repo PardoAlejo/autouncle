@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+jinja2
+python-multipart
+playwright
+openpyxl
+pandas
+requests
+python-dotenv
+pillow
+reportlab
+pypdf
+
+# Windows only — Excel → PDF conversion via Microsoft Office COM automation
+# Instalar solo en Windows con Microsoft Office instalado:
+# pip install pywin32

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AutoUncle — {% block title %}{% endblock %}</title>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    /* NAV */
+    nav {
+      background: #1a1a2e;
+      color: white;
+      padding: 0 2rem;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    nav .brand { font-size: 1.1rem; font-weight: 700; letter-spacing: .5px; }
+    nav .brand span { color: #4fc3f7; }
+    nav .nav-links a {
+      color: #ccc;
+      text-decoration: none;
+      margin-left: 1.5rem;
+      font-size: .9rem;
+      transition: color .2s;
+    }
+    nav .nav-links a:hover { color: white; }
+
+    /* LAYOUT */
+    main { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+
+    /* CARDS */
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    }
+
+    /* BUTTONS */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      padding: .55rem 1.2rem;
+      border-radius: 8px;
+      border: none;
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .15s;
+      text-decoration: none;
+    }
+    .btn-primary   { background: #1a73e8; color: white; }
+    .btn-primary:hover  { background: #1557b0; }
+    .btn-success   { background: #2e7d32; color: white; }
+    .btn-success:hover  { background: #1b5e20; }
+    .btn-danger    { background: #c62828; color: white; }
+    .btn-danger:hover   { background: #8b0000; }
+    .btn-secondary { background: #e8eaed; color: #3c4043; }
+    .btn-secondary:hover { background: #d2d5d9; }
+    .btn-warning   { background: #f9a825; color: white; }
+    .btn:disabled  { opacity: .5; cursor: not-allowed; }
+
+    /* BADGES */
+    .badge {
+      display: inline-block;
+      padding: .2rem .6rem;
+      border-radius: 99px;
+      font-size: .75rem;
+      font-weight: 700;
+    }
+    .badge-pending  { background: #fff3e0; color: #e65100; }
+    .badge-approved { background: #e8f5e9; color: #2e7d32; }
+    .badge-rejected { background: #ffebee; color: #c62828; }
+    .badge-skipped  { background: #e3f2fd; color: #1565c0; }
+
+    /* ALERTS */
+    .alert {
+      padding: .8rem 1.2rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-size: .9rem;
+    }
+    .alert-success { background: #e8f5e9; color: #2e7d32; border-left: 4px solid #2e7d32; }
+    .alert-error   { background: #ffebee; color: #c62828; border-left: 4px solid #c62828; }
+    .alert-info    { background: #e3f2fd; color: #1565c0; border-left: 4px solid #1565c0; }
+
+    /* SPINNER */
+    .htmx-request .spinner { display: inline-block; }
+    .spinner {
+      display: none;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <nav>
+    <div class="brand">Auto<span>Uncle</span></div>
+    <div class="nav-links">
+      <a href="/">Dashboard</a>
+      <a href="/sync" hx-post="/sync" hx-swap="none" hx-indicator="#sync-spinner">
+        🔄 Sincronizar
+        <span id="sync-spinner" class="spinner" style="display:none"></span>
+      </a>
+    </div>
+  </nav>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

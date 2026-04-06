@@ -1,0 +1,21 @@
+# Secrets & credentials
+.env
+config/browser_session/
+config/firma_instructor.png
+token_cache.json
+
+# Database & generated data
+data/
+
+# Setup state (generated on uncle's PC)
+.setup_done
+.req_hash
+
+# Python
+*.pyc
+__pycache__/
+.venv/
+*.egg-info/
+
+# macOS
+.DS_Store
