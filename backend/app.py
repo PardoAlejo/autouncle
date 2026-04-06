@@ -56,16 +56,27 @@ async def session_expired_handler(request: Request, exc: SessionExpiredError):
 
 # ── Re-authentication ──────────────────────────────────────────────────────
 
-_reauth_state: dict = {"running": False, "done": False, "error": None}
+_reauth_state: dict = {
+    "running": False, "done": False, "error": None,
+    "needs_code": False, "submitted_code": None,
+}
 _reauth_lock = threading.Lock()
+_reauth_code_event = threading.Event()
 
 
 def _run_reauth():
     import auth as auth_module
     from playwright.sync_api import sync_playwright
+
+    def otp_callback():
+        _reauth_state["needs_code"] = True
+        _reauth_code_event.wait(timeout=300)   # espera hasta 5 minutos
+        _reauth_state["needs_code"] = False
+        return _reauth_state.get("submitted_code", "")
+
     try:
         with sync_playwright() as p:
-            context = auth_module.get_context(p, headless=False)
+            context = auth_module.get_context(p, headless=True, otp_callback=otp_callback)
             context.browser.close()
         _reauth_state["done"] = True
         _reauth_state["error"] = None
@@ -79,42 +90,104 @@ def _run_reauth():
 def reauth_start():
     with _reauth_lock:
         if not _reauth_state["running"]:
-            _reauth_state.update({"running": True, "done": False, "error": None})
+            _reauth_code_event.clear()
+            _reauth_state.update({
+                "running": True, "done": False, "error": None,
+                "needs_code": False, "submitted_code": None,
+            })
             threading.Thread(target=_run_reauth, daemon=True).start()
     return HTMLResponse("""
         <html><head><title>Renovando sesión...</title>
-        <style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f5f5f5}
-        .box{background:#fff;border-radius:12px;padding:2.5rem 3rem;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.1);max-width:420px}
+        <style>
+        body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;
+             height:100vh;margin:0;background:#f5f5f5}
+        .box{background:#fff;border-radius:12px;padding:2.5rem 3rem;text-align:center;
+             box-shadow:0 4px 20px rgba(0,0,0,.1);max-width:440px;width:90%}
         h2{margin-top:0;color:#1a73e8} p{color:#555;line-height:1.6}
         .spinner{font-size:2rem;animation:spin 1.2s linear infinite;display:inline-block;margin-bottom:.5rem}
         @keyframes spin{to{transform:rotate(360deg)}}
-        .error{color:#c62828;background:#fff3f3;border:1px solid #ffcdd2;border-radius:8px;padding:.7rem;margin-top:1rem;display:none}
+        .error{color:#c62828;background:#fff3f3;border:1px solid #ffcdd2;
+               border-radius:8px;padding:.7rem;margin-top:1rem}
+        input[type=text]{width:100%;padding:.7rem;font-size:1.3rem;text-align:center;
+                         letter-spacing:.3rem;border:2px solid #1a73e8;border-radius:8px;
+                         box-sizing:border-box;margin:.8rem 0;font-family:monospace}
+        button{padding:.65rem 1.8rem;background:#1a73e8;color:#fff;border:none;
+               border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;width:100%}
         </style></head><body><div class="box">
-        <div class="spinner">🔄</div>
-        <h2>Renovando sesión</h2>
-        <p id="msg">Se abrió una ventana de login en tu pantalla.<br>Completa el login con MFA ahí y espera.</p>
-        <div class="error" id="err"></div>
+        <div id="spinner-section">
+          <div class="spinner">🔄</div>
+          <h2>Renovando sesión</h2>
+          <p id="msg">Verificando credenciales...<br>Espera un momento.</p>
+        </div>
+        <div id="sms-section" style="display:none">
+          <div style="font-size:2rem;margin-bottom:.5rem">📱</div>
+          <h2 style="color:#333">Código SMS</h2>
+          <p>Se envió un código a tu teléfono.<br>Ingrésalo aquí:</p>
+          <input type="text" id="sms-code" maxlength="8" placeholder="000000"
+                 autofocus inputmode="numeric">
+          <button onclick="submitCode()">Confirmar →</button>
+        </div>
+        <div id="error-section" style="display:none" class="error"></div>
         </div>
         <script>
         function poll() {
           fetch('/reauth/status').then(r => r.json()).then(d => {
             if (d.done) { window.location.href = '/'; return; }
             if (d.error) {
-              document.getElementById('err').style.display = 'block';
-              document.getElementById('err').textContent = '✗ Error: ' + d.error;
+              document.getElementById('spinner-section').style.display = 'none';
+              document.getElementById('error-section').style.display = 'block';
+              document.getElementById('error-section').textContent = '✗ ' + d.error;
               return;
+            }
+            if (d.needs_code) {
+              document.getElementById('spinner-section').style.display = 'none';
+              document.getElementById('sms-section').style.display = 'block';
+              document.getElementById('sms-code').focus();
+              return;  // No seguir polling — esperamos que el usuario envíe el código
             }
             setTimeout(poll, 2000);
           });
         }
+
+        function submitCode() {
+          const code = document.getElementById('sms-code').value.trim();
+          if (!code) return;
+          document.querySelector('button').disabled = true;
+          document.querySelector('button').textContent = 'Enviando...';
+          fetch('/reauth/submit-code', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'code=' + encodeURIComponent(code)
+          }).then(() => {
+            document.getElementById('sms-section').style.display = 'none';
+            document.getElementById('spinner-section').style.display = 'block';
+            document.getElementById('msg').textContent = 'Verificando código...';
+            setTimeout(poll, 1500);
+          });
+        }
+
+        document.addEventListener('keydown', e => {
+          if (e.key === 'Enter' && document.getElementById('sms-section').style.display !== 'none')
+            submitCode();
+        });
+
         setTimeout(poll, 2000);
         </script></body></html>
     """)
 
 
+@app.post("/reauth/submit-code")
+async def reauth_submit_code(request: Request):
+    form = await request.form()
+    _reauth_state["submitted_code"] = (form.get("code") or "").strip()
+    _reauth_code_event.set()
+    return JSONResponse({"ok": True})
+
+
 @app.get("/reauth/status")
 def reauth_status():
-    return JSONResponse(_reauth_state)
+    return JSONResponse({k: v for k, v in _reauth_state.items()
+                         if k not in ("submitted_code",)})
 
 # DB e inicialización al arrancar
 @app.on_event("startup")

@@ -20,13 +20,15 @@ SHAREPOINT_SITE_URL = os.getenv("SHAREPOINT_SITE_URL")
 ONEDRIVE_BASE_URL = os.getenv("ONEDRIVE_BASE_URL")
 
 
-def get_context(playwright, headless: bool = True) -> BrowserContext:
+def get_context(playwright, headless: bool = True,
+                otp_callback=None) -> BrowserContext:
     """
     Devuelve un BrowserContext autenticado.
-    - Si existe sesión válida: headless (invisible), sin pedir login.
-    - Si no existe o expiró: abre navegador visible para MFA,
-      visita OneDrive + SharePoint para capturar todas las cookies,
-      luego guarda sesión.
+    - Si existe sesión válida: headless, sin pedir login.
+    - Si no: hace login con credenciales del .env y espera MFA/SMS.
+
+    otp_callback: función callable() → str que bloquea hasta que el usuario
+                  provea el código SMS. Si es None, asume MFA por notificación push.
     """
     SESSION_DIR.mkdir(parents=True, exist_ok=True)
     session_file = SESSION_DIR / "state.json"
@@ -41,19 +43,22 @@ def get_context(playwright, headless: bool = True) -> BrowserContext:
         context.close()
         browser.close()
 
-    # Sin sesión válida: login interactivo visible
-    print("Abriendo navegador para login con MFA...")
-    browser = playwright.chromium.launch(headless=False)
+    print("Iniciando login headless...")
+    browser = playwright.chromium.launch(headless=headless)
     context = browser.new_context()
-    _do_login(context)
+    _do_login(context, otp_callback=otp_callback)
     _warm_up_cookies(context)
     context.storage_state(path=str(session_file))
     print(f"✓ Sesión guardada en {session_file}")
     return context
 
 
-def _do_login(context: BrowserContext):
-    """Login interactivo con MFA."""
+def _do_login(context: BrowserContext, otp_callback=None):
+    """
+    Login con credenciales del .env.
+    Si otp_callback está definido, lo llama cuando detecta el campo de código SMS
+    y usa el valor retornado para completar el login.
+    """
     page = context.new_page()
     page.goto("https://login.microsoftonline.com")
 
@@ -65,7 +70,19 @@ def _do_login(context: BrowserContext):
     page.fill("input[type='password']", MS_PASSWORD)
     page.click("input[type='submit']")
 
-    print("Esperando aprobación MFA en el teléfono... (máximo 120 segundos)")
+    # Detectar si aparece el campo de código SMS/OTP
+    if otp_callback:
+        otp_selector = "input[name='otc'], input[autocomplete='one-time-code']"
+        try:
+            page.wait_for_selector(otp_selector, timeout=10000)
+            print("Código SMS requerido — esperando al usuario...")
+            code = otp_callback()   # bloquea hasta que el usuario envíe el código
+            page.fill(otp_selector, code)
+            page.click("input[type='submit']")
+        except Exception:
+            pass  # No apareció campo OTP — puede ser push o ya redirigió
+
+    print("Esperando redirección post-login... (máximo 120 segundos)")
     page.wait_for_url(
         lambda url: "login.microsoftonline.com" not in url,
         timeout=120000
@@ -74,7 +91,7 @@ def _do_login(context: BrowserContext):
     # Aceptar "¿Mantener sesión iniciada?"
     try:
         page.wait_for_selector("#idSIButton9", timeout=5000)
-        page.click("#idSIButton9")  # "Sí"
+        page.click("#idSIButton9")
     except Exception:
         pass
 
