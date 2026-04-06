@@ -85,6 +85,45 @@
   }
   .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; }
   .empty-state h3 { font-size: 1.2rem; margin-bottom: .5rem; color: #444; }
+
+  /* Accordion */
+  .apprentice-list { display: flex; flex-direction: column; gap: .4rem; }
+  .appr-group { border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden; }
+  .appr-header {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .75rem 1rem;
+    cursor: pointer;
+    background: #f8f9fa;
+    user-select: none;
+    transition: background .1s;
+  }
+  .appr-header:hover, .appr-header.open { background: #eef1ff; }
+  .appr-chevron { font-size: .7rem; color: #888; width: .8rem; flex-shrink: 0; }
+  .appr-name { font-weight: 700; font-size: .95rem; color: #1a1a2e; }
+  .appr-pending-dot, .appr-ok-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    flex-shrink: 0; margin-left: .4rem;
+  }
+  .appr-pending-dot { background: #e65100; box-shadow: 0 0 0 2px #ffd0b0; }
+  .appr-ok-dot      { background: #2e7d32; box-shadow: 0 0 0 2px #c8e6c9; }
+  .appr-meta { font-size: .8rem; color: #888; margin-left: auto; }
+  .appr-body table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  .appr-body thead th {
+    background: #fafafa;
+    padding: .5rem 1rem;
+    text-align: left;
+    font-size: .72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: #888;
+    border-bottom: 1px solid #eee;
+  }
+  .appr-body tbody tr { border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background .1s; }
+  .appr-body tbody tr:hover { background: #f8f9fa; }
+  .appr-body tbody td { padding: .6rem 1rem; vertical-align: middle; }
 </style>
 {% endblock %}
 
@@ -152,45 +191,67 @@
     </form>
   </div>
 
-  {% if rows %}
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Aprendiz</th>
-          <th>Ficha</th>
-          <th>Bitácora</th>
-          <th>Archivo</th>
-          <th>Modificado</th>
-          <th>Estado</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for r in rows %}
-        <tr onclick="window.location='/bitacora/{{ r.id }}'">
-          <td style="color:#aaa;font-size:.8rem">{{ r.id }}</td>
-          <td class="apprentice-name">{{ r.apprentice_name }}</td>
-          <td><span style="font-size:.8rem;color:#666">{{ r.ficha }}</span></td>
-          <td style="text-align:center;font-weight:700">{{ r.bitacora_num or '?' }}</td>
-          <td class="filename">
-            <span class="ext-badge ext-{{ r.file_ext }}">{{ r.file_ext }}</span>
-            {{ r.filename }}
-          </td>
-          <td class="modified">{{ r.modified[:10] if r.modified else '' }}</td>
-          <td><span class="badge badge-{{ r.status }}">
-            {% if r.status == 'pending'  %}Pendiente
-            {% elif r.status == 'approved' %}Aprobada
-            {% elif r.status == 'rejected' %}Rechazada
-            {% else %}Ya revisada{% endif %}
-          </span></td>
-          <td><a href="/bitacora/{{ r.id }}" class="btn btn-secondary" style="font-size:.8rem;padding:.4rem .8rem">Revisar →</a></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  {% if groups %}
+  <div class="apprentice-list">
+    {% for g in groups %}
+    <div class="appr-group" id="group-{{ loop.index }}">
+      <div class="appr-header" onclick="toggleGroup('group-{{ loop.index }}')">
+        <span class="appr-chevron">▶</span>
+        <span class="appr-name">{{ g.name }}</span>
+        {% if g.has_pending %}
+        <span class="appr-pending-dot" title="Tiene bitácoras pendientes"></span>
+        {% else %}
+        <span class="appr-ok-dot" title="Todo revisado"></span>
+        {% endif %}
+        <span class="appr-meta">ficha {{ g.ficha }} · {{ g.rows | length }} bitácora{{ 's' if g.rows | length != 1 }}</span>
+      </div>
+      <div class="appr-body" style="display:none">
+        <table>
+          <thead>
+            <tr>
+              <th>Nº</th>
+              <th>Archivo</th>
+              <th>Modificado</th>
+              <th>Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in g.rows %}
+            <tr onclick="window.location='/bitacora/{{ r.id }}'">
+              <td style="text-align:center;font-weight:700;width:3rem">{{ r.bitacora_num or '?' }}</td>
+              <td class="filename">
+                <span class="ext-badge ext-{{ r.file_ext }}">{{ r.file_ext }}</span>
+                {{ r.filename }}
+              </td>
+              <td class="modified">{{ r.modified[:10] if r.modified else '' }}</td>
+              <td><span class="badge badge-{{ r.status }}">
+                {% if r.status == 'pending'  %}Pendiente
+                {% elif r.status == 'approved' %}Aprobada
+                {% elif r.status == 'rejected' %}Rechazada
+                {% else %}Ya revisada{% endif %}
+              </span></td>
+              <td><a href="/bitacora/{{ r.id }}" class="btn btn-secondary" style="font-size:.8rem;padding:.4rem .8rem" onclick="event.stopPropagation()">Revisar →</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endfor %}
   </div>
+
+  <script>
+    function toggleGroup(id) {
+      const g = document.getElementById(id);
+      const body = g.querySelector('.appr-body');
+      const chevron = g.querySelector('.appr-chevron');
+      const open = body.style.display !== 'none';
+      body.style.display = open ? 'none' : 'block';
+      chevron.textContent = open ? '▶' : '▼';
+      g.querySelector('.appr-header').classList.toggle('open', !open);
+    }
+  </script>
   {% else %}
   <div class="empty-state">
     <div class="icon">✅</div>

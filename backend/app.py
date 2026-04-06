@@ -265,10 +265,27 @@ def dashboard(request: Request,
             q_lower = q.lower()
             rows = [r for r in rows if q_lower in r["apprentice_name"].lower()]
 
+    rows.sort(key=lambda r: (r["apprentice_name"] or "", r["bitacora_num"] or 0))
+
+    # Group by apprentice for accordion view
+    groups = []
+    for r in rows:
+        if not groups or groups[-1]["name"] != r["apprentice_name"]:
+            groups.append({
+                "name": r["apprentice_name"] or "—",
+                "ficha": r["ficha"],
+                "has_pending": False,
+                "rows": [],
+            })
+        groups[-1]["rows"].append(r)
+        if r["status"] == "pending":
+            groups[-1]["has_pending"] = True
+
     all_rows = get_all()
     fichas = sorted(set(r["ficha"] for r in all_rows if r["ficha"]))
 
     response = templates.TemplateResponse(request, "dashboard.html", {
+        "groups": groups,
         "rows": rows,
         "stats": stats,
         "total": total,
