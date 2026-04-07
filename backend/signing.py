@@ -167,6 +167,7 @@ def _sign_pdf(content: bytes, original_filename: str,
     overlay_buf = io.BytesIO()
     c = rl_canvas.Canvas(overlay_buf, pagesize=(page_width, page_height))
 
+    print(f"  · Buscando firma en: {SIGNATURE_IMAGE_PATH} — existe: {SIGNATURE_IMAGE_PATH.exists()}")
     if SIGNATURE_IMAGE_PATH.exists():
         c.drawImage(
             str(SIGNATURE_IMAGE_PATH),
