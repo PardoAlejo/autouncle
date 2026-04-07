@@ -11,4 +11,3 @@ pillow
 reportlab
 pypdf
 
-pywin32

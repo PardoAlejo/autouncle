@@ -52,14 +52,6 @@ def ensure_dependencies():
         subprocess.check_call([sys.executable, "-m", "pip", "install", *missing])
         print("✓ Dependencias instaladas\n")
 
-    # pywin32 solo en Windows
-    if sys.platform == "win32":
-        try:
-            import win32com.client  # noqa
-        except ImportError:
-            print("Instalando pywin32 (necesario para Excel → PDF en Windows)...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "pywin32"])
-            print("✓ pywin32 instalado\n")
 
 
 TEST_IDS = [
