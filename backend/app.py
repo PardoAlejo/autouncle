@@ -570,6 +570,8 @@ def sync_now():
             f"/?message=Sync+completado:+{new}+nuevas,+{updated}+actualizadas&message_type=success",
             status_code=303
         )
+    except SessionExpiredError:
+        raise
     except Exception as e:
         return RedirectResponse(
             f"/?message=Error+en+sync:+{str(e)[:80]}&message_type=error",
