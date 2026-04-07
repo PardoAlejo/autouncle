@@ -78,6 +78,11 @@ if not exist "!CONDA_EXE!" (
     exit /b 1
 )
 
+:: ─── Aceptar Terms of Service de conda ──────────────────────────────────────
+"!CONDA_EXE!" tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main >nul 2>&1
+"!CONDA_EXE!" tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r >nul 2>&1
+"!CONDA_EXE!" tos accept --override-channels --channel https://repo.anaconda.com/pkgs/msys2 >nul 2>&1
+
 :: ─── Crear entorno si no existe ──────────────────────────────────────────────
 "!CONDA_EXE!" env list 2>nul | findstr /B "%ENV_NAME% " >nul
 if errorlevel 1 (
