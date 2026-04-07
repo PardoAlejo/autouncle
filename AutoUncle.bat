@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 title AutoUncle
 cd /d "%~dp0"
 
-set ENV_NAME=autouncle
+set VENV_DIR=.venv
 set SENTINEL=.setup_done
 set REQ_HASH_FILE=.req_hash
 
@@ -37,59 +37,37 @@ if not "%GIT_EXE%"=="" (
     echo  Git no encontrado, se omite la actualizacion.
 )
 
-:: ─── Buscar conda en ubicaciones comunes ─────────────────────────────────────
-set CONDA_EXE=
+:: ─── Buscar Python 3 en ubicaciones comunes ──────────────────────────────────
+set PYTHON_EXE=
 for %%P in (
-    "%USERPROFILE%\miniconda3\Scripts\conda.exe"
-    "%USERPROFILE%\anaconda3\Scripts\conda.exe"
-    "%LOCALAPPDATA%\miniconda3\Scripts\conda.exe"
-    "C:\ProgramData\miniconda3\Scripts\conda.exe"
-    "C:\ProgramData\anaconda3\Scripts\conda.exe"
-    "C:\miniconda3\Scripts\conda.exe"
-) do if exist %%P if "!CONDA_EXE!"=="" set CONDA_EXE=%%~P
+    "%USERPROFILE%\miniconda3\python.exe"
+    "%USERPROFILE%\anaconda3\python.exe"
+    "%LOCALAPPDATA%\miniconda3\python.exe"
+    "C:\ProgramData\miniconda3\python.exe"
+    "C:\ProgramData\anaconda3\python.exe"
+    "C:\miniconda3\python.exe"
+    "C:\Python311\python.exe"
+    "C:\Python310\python.exe"
+    "C:\Python39\python.exe"
+) do if exist %%P if "!PYTHON_EXE!"=="" set PYTHON_EXE=%%~P
 
-:: Si no esta, descargar e instalar Miniconda silenciosamente
-if "!CONDA_EXE!"=="" (
-    echo  [1/3] Instalando Miniconda ^(solo la primera vez^)...
-    powershell -NoProfile -Command ^
-        "Invoke-WebRequest 'https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe' -OutFile '%TEMP%\miniconda_setup.exe'"
-    if errorlevel 1 (
-        echo  ERROR: No se pudo descargar Miniconda. Verifica tu conexion a internet.
-        pause
-        exit /b 1
-    )
-    "%TEMP%\miniconda_setup.exe" /InstallationType=JustMe /AddToPath=0 /RegisterPython=0 /S /D="%USERPROFILE%\miniconda3"
-    if errorlevel 1 (
-        echo  ERROR: No se pudo instalar Miniconda.
-        pause
-        exit /b 1
-    )
-    set CONDA_EXE=%USERPROFILE%\miniconda3\Scripts\conda.exe
-    del "%TEMP%\miniconda_setup.exe" 2>nul
-    echo  Miniconda instalado.
-) else (
-    echo  [1/3] Conda encontrado.
+if "!PYTHON_EXE!"=="" (
+    where python >nul 2>&1 && set PYTHON_EXE=python
 )
 
-:: Verificar que el ejecutable existe
-if not exist "!CONDA_EXE!" (
-    echo  ERROR: No se encontro conda en: !CONDA_EXE!
+if "!PYTHON_EXE!"=="" (
+    echo  ERROR: No se encontro Python. Instala Miniconda o Python 3 primero.
     pause
     exit /b 1
 )
+echo  [1/3] Python encontrado: !PYTHON_EXE!
 
-:: ─── Aceptar Terms of Service de conda ──────────────────────────────────────
-"!CONDA_EXE!" tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main >nul 2>&1
-"!CONDA_EXE!" tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r >nul 2>&1
-"!CONDA_EXE!" tos accept --override-channels --channel https://repo.anaconda.com/pkgs/msys2 >nul 2>&1
-
-:: ─── Crear entorno si no existe ──────────────────────────────────────────────
-"!CONDA_EXE!" env list 2>nul | findstr /B "%ENV_NAME% " >nul
-if errorlevel 1 (
-    echo  [2/3] Creando entorno Python ^(puede tardar unos minutos^)...
-    "!CONDA_EXE!" create -n %ENV_NAME% python=3.11 -y
+:: ─── Crear venv si no existe ─────────────────────────────────────────────────
+if not exist "%VENV_DIR%\Scripts\python.exe" (
+    echo  [2/3] Creando entorno virtual...
+    "!PYTHON_EXE!" -m venv %VENV_DIR%
     if errorlevel 1 (
-        echo  ERROR: No se pudo crear el entorno Python.
+        echo  ERROR: No se pudo crear el entorno virtual.
         pause
         exit /b 1
     )
@@ -97,8 +75,11 @@ if errorlevel 1 (
     if exist "%SENTINEL%" del "%SENTINEL%"
     if exist "%REQ_HASH_FILE%" del "%REQ_HASH_FILE%"
 ) else (
-    echo  [2/3] Entorno Python listo.
+    echo  [2/3] Entorno virtual listo.
 )
+
+set VENV_PYTHON=%VENV_DIR%\Scripts\python.exe
+set VENV_PIP=%VENV_DIR%\Scripts\pip.exe
 
 :: ─── Instalar/actualizar dependencias si requirements.txt cambio ─────────────
 for /f "skip=1 delims=" %%H in (
@@ -110,8 +91,8 @@ if exist "%REQ_HASH_FILE%" set /p STORED_HASH=<"%REQ_HASH_FILE%"
 if not exist "%SENTINEL%" set STORED_HASH=NONE
 
 if /i "!CURRENT_HASH!" neq "!STORED_HASH!" (
-    echo  [3/3] Instalando dependencias ^(solo cuando hay cambios^)...
-    "!CONDA_EXE!" run -n %ENV_NAME% pip install -r requirements.txt
+    echo  [3/3] Instalando dependencias ^(puede tardar unos minutos^)...
+    "!VENV_PIP!" install -r requirements.txt
     if errorlevel 1 (
         echo  ERROR instalando dependencias.
         pause
@@ -119,7 +100,7 @@ if /i "!CURRENT_HASH!" neq "!STORED_HASH!" (
     )
     if not exist "%SENTINEL%" (
         echo  Instalando navegador Chromium...
-        "!CONDA_EXE!" run -n %ENV_NAME% playwright install chromium
+        "!VENV_PYTHON!" -m playwright install chromium
         if errorlevel 1 (
             echo  ERROR instalando Chromium.
             pause
@@ -142,7 +123,7 @@ echo.
 start "" cmd /c "timeout /t 4 /nobreak >nul & start http://localhost:8000"
 
 :: Arrancar servidor en primer plano (cerrar esta ventana detiene el servidor)
-"!CONDA_EXE!" run -n %ENV_NAME% python run.py
+"!VENV_PYTHON!" run.py
 
 echo.
 echo  El servidor se detuvo. Presiona cualquier tecla para cerrar.
