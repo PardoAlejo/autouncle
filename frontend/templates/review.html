@@ -339,6 +339,9 @@
           <button type="button" class="btn btn-success" id="approve-btn" onclick="startApprovalFlow()">
             ✍️ Firmar y subir
           </button>
+          <form method="post" action="/bitacora/{{ b.id }}/already-done" style="margin:0">
+            <button type="submit" class="btn btn-secondary">✓ Ya completa</button>
+          </form>
           <button type="button" class="btn btn-danger" id="reject-trigger">✗ Rechazar</button>
         </div>
 

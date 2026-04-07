@@ -513,6 +513,16 @@ def reject(bitacora_id: int, background_tasks: BackgroundTasks, notes: str = For
     )
 
 
+@app.post("/bitacora/{bitacora_id}/already-done")
+def already_done(bitacora_id: int, background_tasks: BackgroundTasks):
+    update_status(bitacora_id, "approved", "Ya estaba completa")
+    background_tasks.add_task(push_to_onedrive)
+    return RedirectResponse(
+        f"/bitacora/{bitacora_id}?message=Bitácora+marcada+como+aprobada&message_type=success",
+        status_code=303
+    )
+
+
 @app.post("/bitacora/{bitacora_id}/skip")
 def skip(bitacora_id: int, background_tasks: BackgroundTasks):
     update_status(bitacora_id, "skipped")

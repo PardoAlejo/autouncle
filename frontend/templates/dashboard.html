@@ -231,14 +231,7 @@
                 {% elif r.status == 'rejected' %}Rechazada
                 {% else %}Ya revisada{% endif %}
               </span></td>
-              <td style="white-space:nowrap">
-                <a href="/bitacora/{{ r.id }}" class="btn btn-secondary" style="font-size:.8rem;padding:.4rem .8rem" onclick="event.stopPropagation()">Revisar →</a>
-                {% if r.status == 'pending' %}
-                <form method="post" action="/bitacora/{{ r.id }}/skip" style="display:inline;margin:0" onclick="event.stopPropagation()">
-                  <button type="submit" style="font-size:.8rem;padding:.4rem .8rem;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:6px;cursor:pointer;margin-left:.3rem">✓ Ya firmada</button>
-                </form>
-                {% endif %}
-              </td>
+              <td><a href="/bitacora/{{ r.id }}" class="btn btn-secondary" style="font-size:.8rem;padding:.4rem .8rem" onclick="event.stopPropagation()">Revisar →</a></td>
             </tr>
             {% endfor %}
           </tbody>
