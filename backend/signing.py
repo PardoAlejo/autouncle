@@ -81,8 +81,11 @@ def excel_to_pdf(content: bytes) -> bytes:
         try:
             import win32com.client
             excel = win32com.client.Dispatch("Excel.Application")
-            excel.Visible = False
-            excel.DisplayAlerts = False
+            try:
+                excel.Visible = False
+                excel.DisplayAlerts = False
+            except Exception:
+                pass  # En algunos contextos no se puede setear, Excel ya es invisible por defecto
             wb = excel.Workbooks.Open(str(xlsx_path.resolve()))
             wb.ExportAsFixedFormat(0, str(pdf_path.resolve()))  # 0 = xlTypePDF
             wb.Close(False)
