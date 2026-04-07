@@ -118,10 +118,9 @@
     <div class="brand">Auto<span>Uncle</span></div>
     <div class="nav-links">
       <a href="/">Dashboard</a>
-      <a href="/sync" hx-post="/sync" hx-swap="none" hx-indicator="#sync-spinner">
-        🔄 Sincronizar
-        <span id="sync-spinner" class="spinner" style="display:none"></span>
-      </a>
+      <form method="post" action="/sync" style="display:inline;margin:0">
+        <button type="submit" style="background:none;border:none;cursor:pointer;font-size:inherit;color:inherit;padding:0">🔄 Sincronizar</button>
+      </form>
     </div>
   </nav>
   <main>

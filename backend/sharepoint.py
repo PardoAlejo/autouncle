@@ -52,6 +52,8 @@ _excel_db_cache: Optional["pd.DataFrame"] = None  # type: ignore[name-defined]
 
 def get_session() -> requests.Session:
     """Crea un requests.Session con las cookies de SharePoint guardadas."""
+    if not SESSION_FILE.exists():
+        raise SessionExpiredError("No hay sesión guardada. Inicia sesión primero.")
     state = json.loads(SESSION_FILE.read_text())
     session = requests.Session()
     session.headers.update({"Accept": "application/json;odata=verbose"})
