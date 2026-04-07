@@ -44,7 +44,7 @@ async def session_expired_handler(request: Request, exc: SessionExpiredError):
         .btn{display:inline-block;margin-top:1rem;padding:.7rem 1.6rem;background:#1a73e8;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;font-size:1rem;border:none;cursor:pointer}</style>
         </head><body><div class="box">
         <h2>⚠ Sesión expirada</h2>
-        <p>Las credenciales de SharePoint vencieron.<br>Haz clic para renovar — se abrirá una ventana de login en tu pantalla.</p>
+        <p>Las credenciales de SharePoint vencieron.<br>Haz clic para abrir el navegador e iniciar sesión con Microsoft.</p>
         <form method="post" action="/reauth">
           <button type="submit" class="btn">🔑 Renovar sesión</button>
         </form>
@@ -68,15 +68,9 @@ def _run_reauth():
     import auth as auth_module
     from playwright.sync_api import sync_playwright
 
-    def otp_callback():
-        _reauth_state["needs_code"] = True
-        _reauth_code_event.wait(timeout=300)   # espera hasta 5 minutos
-        _reauth_state["needs_code"] = False
-        return _reauth_state.get("submitted_code", "")
-
     try:
         with sync_playwright() as p:
-            context = auth_module.get_context(p, headless=True, otp_callback=otp_callback)
+            context = auth_module.get_context(p, headless=False)
             context.browser.close()
         _reauth_state["done"] = True
         _reauth_state["error"] = None
@@ -117,15 +111,10 @@ def reauth_start():
         <div id="spinner-section">
           <div class="spinner">🔄</div>
           <h2>Renovando sesión</h2>
-          <p id="msg">Verificando credenciales...<br>Espera un momento.</p>
-        </div>
-        <div id="sms-section" style="display:none">
-          <div style="font-size:2rem;margin-bottom:.5rem">📱</div>
-          <h2 style="color:#333">Código SMS</h2>
-          <p>Se envió un código a tu teléfono.<br>Ingrésalo aquí:</p>
-          <input type="text" id="sms-code" maxlength="8" placeholder="000000"
-                 autofocus inputmode="numeric">
-          <button onclick="submitCode()">Confirmar →</button>
+          <p>Se abrió una ventana del navegador.<br><br>
+          <strong>Inicia sesión con tu cuenta de Microsoft</strong><br>
+          e ingresa el código SMS directamente en esa ventana.<br><br>
+          <span style="color:#888;font-size:.9rem">Esta página se actualizará sola cuando termines.</span></p>
         </div>
         <div id="error-section" style="display:none" class="error"></div>
         </div>
@@ -139,37 +128,9 @@ def reauth_start():
               document.getElementById('error-section').textContent = '✗ ' + d.error;
               return;
             }
-            if (d.needs_code) {
-              document.getElementById('spinner-section').style.display = 'none';
-              document.getElementById('sms-section').style.display = 'block';
-              document.getElementById('sms-code').focus();
-              return;  // No seguir polling — esperamos que el usuario envíe el código
-            }
             setTimeout(poll, 2000);
           });
         }
-
-        function submitCode() {
-          const code = document.getElementById('sms-code').value.trim();
-          if (!code) return;
-          document.querySelector('button').disabled = true;
-          document.querySelector('button').textContent = 'Enviando...';
-          fetch('/reauth/submit-code', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: 'code=' + encodeURIComponent(code)
-          }).then(() => {
-            document.getElementById('sms-section').style.display = 'none';
-            document.getElementById('spinner-section').style.display = 'block';
-            document.getElementById('msg').textContent = 'Verificando código...';
-            setTimeout(poll, 1500);
-          });
-        }
-
-        document.addEventListener('keydown', e => {
-          if (e.key === 'Enter' && document.getElementById('sms-section').style.display !== 'none')
-            submitCode();
-        });
 
         setTimeout(poll, 2000);
         </script></body></html>
