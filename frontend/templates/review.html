@@ -375,6 +375,12 @@
   <div id="overlay-toolbar">
     <button class="btn btn-secondary" onclick="closeSigningOverlay()" style="flex-shrink:0">✕ Cancelar</button>
     <span class="hint" id="overlay-hint">Navega hasta la página de firma y haz click donde quieres colocarla</span>
+    <label style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;color:#555;flex-shrink:0">
+      Tamaño:
+      <input type="range" id="sig-scale-slider" min="0.3" max="3" step="0.05" value="1"
+             style="width:90px" oninput="onScaleChange(this.value)">
+      <span id="sig-scale-label">1×</span>
+    </label>
     <button class="btn btn-success" id="confirm-btn" onclick="confirmSignature()" disabled style="flex-shrink:0">
       ✓ Confirmar firma
     </button>
@@ -405,6 +411,7 @@
   <input type="hidden" name="sig_x"       id="sig_x">
   <input type="hidden" name="sig_y"       id="sig_y">
   <input type="hidden" name="sig_page"    id="sig_page" value="-1">
+  <input type="hidden" name="sig_scale"   id="sig_scale" value="1">
 </form>
 
 <!-- ── DEST CONFIRMATION OVERLAY ──────────────────────────────────── -->
@@ -508,6 +515,14 @@
 
     const SIG_W_RATIO = 0.25;
     const SIG_H_PT    = 45;
+    let sigScale = 1.0;
+
+    window.onScaleChange = function(val) {
+      sigScale = parseFloat(val);
+      document.getElementById('sig-scale-label').textContent = sigScale.toFixed(2) + '×';
+      document.getElementById('sig_scale').value = sigScale;
+      repositionPin();
+    };
 
     let pdfDoc = null, currentPage = 1, currentScale = 1, renderTask = null;
     let sigPlaced = false;
@@ -557,8 +572,8 @@
       const ptX    = parseFloat(document.getElementById('sig_x').value);
       const ptY    = parseFloat(document.getElementById('sig_y').value);
       if (isNaN(ptX) || isNaN(ptY)) return;
-      const sigWpx = canvas.clientWidth * SIG_W_RATIO;
-      const sigHpx = SIG_H_PT * currentScale;
+      const sigWpx = canvas.clientWidth * SIG_W_RATIO * sigScale;
+      const sigHpx = SIG_H_PT * currentScale * sigScale;
       const cssCx  = ptX * currentScale;
       const cssCy  = canvas.clientHeight - ptY * currentScale;
       pin.style.left   = (cssCx - sigWpx / 2) + 'px';

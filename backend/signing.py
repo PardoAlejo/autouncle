@@ -46,16 +46,18 @@ def libreoffice_available() -> str | None:
 
 
 def sign_and_export(file_content: bytes, file_ext: str, original_filename: str,
-                    sig_x: float = None, sig_y: float = None, sig_page: int = -1) -> tuple[bytes, str]:
+                    sig_x: float = None, sig_y: float = None, sig_page: int = -1,
+                    sig_scale: float = 1.0) -> tuple[bytes, str]:
     """
     Firma el PDF e retorna (output_bytes, output_filename).
     Los Excel deben convertirse a PDF antes de llamar esta función.
     sig_x, sig_y: coordenadas en puntos PDF donde centrar la firma (origen abajo-izquierda).
     sig_page: índice de página base-0 donde firmar (-1 = última página).
+    sig_scale: factor de escala para el tamaño de la firma (1.0 = default).
     """
     ext = file_ext.lower().lstrip(".")
     if ext == "pdf":
-        return _sign_pdf(file_content, original_filename, sig_x, sig_y, sig_page)
+        return _sign_pdf(file_content, original_filename, sig_x, sig_y, sig_page, sig_scale)
     else:
         raise ValueError(f"Formato no soportado: {ext}. Convertir a PDF primero.")
 
@@ -133,7 +135,8 @@ def _find_bitacora_sheet(wb):
 # ─────────────────────────────────────────────
 
 def _sign_pdf(content: bytes, original_filename: str,
-              sig_x: float = None, sig_y: float = None, sig_page: int = -1) -> tuple[bytes, str]:
+              sig_x: float = None, sig_y: float = None, sig_page: int = -1,
+              sig_scale: float = 1.0) -> tuple[bytes, str]:
     """
     Superpone la imagen de firma sobre el PDF.
     sig_x, sig_y: centro de la firma en puntos PDF (origen abajo-izquierda).
@@ -151,9 +154,9 @@ def _sign_pdf(content: bytes, original_filename: str,
     page_width  = float(target_page.mediabox.width)
     page_height = float(target_page.mediabox.height)
 
-    # Tamaño de la firma (proporcional al ancho de página)
-    sig_w = page_width * 0.25
-    sig_h = 45.0
+    # Tamaño de la firma (proporcional al ancho de página, escalado por el usuario)
+    sig_w = page_width * 0.25 * sig_scale
+    sig_h = 45.0 * sig_scale
 
     # Posición: usar coordenadas del usuario o fallback
     if sig_x is not None and sig_y is not None:

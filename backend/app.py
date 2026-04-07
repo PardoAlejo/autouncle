@@ -420,7 +420,8 @@ def approve(bitacora_id: int, background_tasks: BackgroundTasks,
             dest_folder: str = Form(default=""),
             sig_x: Optional[float] = Form(default=None),
             sig_y: Optional[float] = Form(default=None),
-            sig_page: int = Form(default=-1)):
+            sig_page: int = Form(default=-1),
+            sig_scale: float = Form(default=1.0)):
     """
     Flujo de aprobación:
     1. Descarga el archivo desde OneDrive
@@ -456,7 +457,7 @@ def approve(bitacora_id: int, background_tasks: BackgroundTasks,
         # 3. Firmar el PDF en las coordenadas que eligió el tío
         pdf_bytes, pdf_name = signing.sign_and_export(
             content, ext, b["filename"],
-            sig_x=sig_x, sig_y=sig_y, sig_page=sig_page
+            sig_x=sig_x, sig_y=sig_y, sig_page=sig_page, sig_scale=sig_scale
         )
 
         # 4. Usar la carpeta destino confirmada por el usuario
@@ -517,10 +518,11 @@ def reject(bitacora_id: int, background_tasks: BackgroundTasks, notes: str = For
 def already_done(bitacora_id: int, background_tasks: BackgroundTasks):
     update_status(bitacora_id, "approved", "Ya estaba completa")
     background_tasks.add_task(push_to_onedrive)
-    return RedirectResponse(
-        f"/bitacora/{bitacora_id}?message=Bitácora+marcada+como+aprobada&message_type=success",
-        status_code=303
-    )
+    pending = get_pending()
+    next_b = next((r for r in pending if r["id"] != bitacora_id), None)
+    if next_b:
+        return RedirectResponse(f"/bitacora/{next_b['id']}", status_code=303)
+    return RedirectResponse("/?message=Todas+las+bitácoras+están+al+día", status_code=303)
 
 
 @app.post("/bitacora/{bitacora_id}/skip")
