@@ -77,25 +77,27 @@ def excel_to_pdf(content: bytes) -> bytes:
         pdf_path  = tmpdir / "bitacora.pdf"
         xlsx_path.write_bytes(content)
 
-        # ── Opción 1: Excel COM (Windows + Office) ──────────────
-        try:
-            import win32com.client
-            excel = win32com.client.Dispatch("Excel.Application")
-            try:
-                excel.Visible = False
-                excel.DisplayAlerts = False
-            except Exception:
-                pass  # En algunos contextos no se puede setear, Excel ya es invisible por defecto
-            wb = excel.Workbooks.Open(str(xlsx_path.resolve()))
-            wb.ExportAsFixedFormat(0, str(pdf_path.resolve()))  # 0 = xlTypePDF
-            wb.Close(False)
-            excel.Quit()
-            if pdf_path.exists():
+        # ── Opción 1: Excel via PowerShell (Windows + Office) ───
+        if shutil.which("powershell") or shutil.which("powershell.exe"):
+            ps_script = (
+                f"$e = New-Object -ComObject Excel.Application;"
+                f"$e.Visible = $false;"
+                f"$e.DisplayAlerts = $false;"
+                f"$wb = $e.Workbooks.Open('{xlsx_path.resolve()}');"
+                f"$wb.ExportAsFixedFormat(0, '{pdf_path.resolve()}');"
+                f"$wb.Close($false);"
+                f"$e.Quit();"
+                f"[System.Runtime.Interopservices.Marshal]::ReleaseComObject($e) | Out-Null"
+            )
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+                capture_output=True, timeout=60
+            )
+            if result.returncode == 0 and pdf_path.exists():
                 pdf_bytes = pdf_path.read_bytes()
-                print(f"  ✓ Excel → PDF via Microsoft Excel ({len(pdf_bytes):,} bytes)")
+                print(f"  ✓ Excel → PDF via PowerShell+Excel ({len(pdf_bytes):,} bytes)")
                 return pdf_bytes
-        except Exception as e:
-            print(f"  · Excel COM no disponible: {e}")
+            print(f"  · PowerShell Excel error: {result.stderr.decode(errors='ignore')[:200]}")
 
         # ── Opción 2: LibreOffice ────────────────────────────────
         lo = libreoffice_available()
