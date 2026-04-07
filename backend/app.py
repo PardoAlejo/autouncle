@@ -244,10 +244,12 @@ def dashboard(request: Request,
 
     all_rows = get_all()
     fichas = sorted(set(r["ficha"] for r in all_rows if r["ficha"]))
+    num_students = len(set(r["apprentice_name"] for r in all_rows if r["apprentice_name"]))
 
     response = templates.TemplateResponse(request, "dashboard.html", {
         "groups": groups,
         "rows": rows,
+        "num_students": num_students,
         "stats": stats,
         "total": total,
         "fichas": fichas,
